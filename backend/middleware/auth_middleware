@@ -1,1 +1,88 @@
+"""
+backend/middleware/auth_middleware.py
 
+Token accepted from THREE places (in priority order):
+  1. Authorization: Bearer <token>  header  (normal API calls)
+  2. ?token=<token>                 query param (file download links in browser)
+  3. X-Auth-Token: <token>          header  (alternative header)
+
+Why query param needed:
+  When user clicks a download link like:
+    /api/export/batches
+  The browser opens it directly — no JS, no headers.
+  The only way to send auth is via query string.
+"""
+import os
+import jwt
+from functools import wraps
+from flask import request, jsonify
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SECRET = os.environ.get("JWT_SECRET", "dev-secret")
+
+
+def _extract_token() -> str | None:
+    """
+    Try to extract JWT from request in this order:
+      1. Authorization header (Bearer token)
+      2. ?token= query parameter (for direct browser downloads)
+      3. X-Auth-Token header
+    """
+    # 1. Authorization header
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+
+    # 2. Query parameter — used by export/download links
+    token = request.args.get("token")
+    if token:
+        return token
+
+    # 3. Alternate header
+    token = request.headers.get("X-Auth-Token")
+    if token:
+        return token
+
+    return None
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = _extract_token()
+        if not token:
+            return jsonify({"error": "Token missing"}), 401
+        try:
+            data = jwt.decode(token, SECRET, algorithms=["HS256"])
+            request.user_id    = data["user_id"]
+            request.user_email = data["email"]
+            request.user_role  = data.get("role", "operator")
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expired — please log in again"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = _extract_token()
+        if not token:
+            return jsonify({"error": "Token missing"}), 401
+        try:
+            data = jwt.decode(token, SECRET, algorithms=["HS256"])
+            request.user_id    = data["user_id"]
+            request.user_email = data["email"]
+            request.user_role  = data.get("role", "operator")
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        if request.user_role != "admin":
+            return jsonify({"error": "Admin access required"}), 403
+        return f(*args, **kwargs)
+    return decorated
