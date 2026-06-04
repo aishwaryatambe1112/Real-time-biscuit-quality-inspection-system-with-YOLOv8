@@ -1,251 +1,910 @@
 # 🍪 BiscuitAI — Real-Time Biscuit Quality Inspection System
-
-AI-powered real-time defect detection for **Monaco**, **Parle-G**, and **Marie** biscuits.
-Three specialized YOLOv8m models run in parallel on every camera frame.
+> AI-Powered Multi-Model Defect Detection for Food Manufacturing
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-| Layer       | Technology                                  |
-|-------------|---------------------------------------------|
-| Detection   | YOLOv8m (Ultralytics) — 3 separate models  |
-| Backend     | Python 3.10+, Flask, Flask-SocketIO         |
-| Frontend    | React 18, Recharts, Socket.IO client        |
-| Database    | MySQL 8                                     |
-| Auth / OTP  | SendGrid + JWT                              |
-| OS          | Windows 10/11                               |
+| Category | Technology | Purpose |
+|----------|-----------|---------|
+| **AI / ML** | Python 3.10+, YOLOv8m (Ultralytics) | Core inference engine, 3 brand-specific detection models |
+| **Backend** | Flask, Flask-SocketIO | REST API server + real-time WebSocket frame streaming |
+| **Frontend** | React.js 18, JavaScript, HTML5, CSS3 | Live camera feed UI, dashboard, batch management |
+| **Charts** | Recharts | Analytics dashboard — defect trends, brand comparisons |
+| **Database** | MySQL 8.0 | Batch-wise detection history, hourly stats, user data |
+| **Auth** | SendGrid (OTP email), JWT | Passwordless login via one-time passcode |
+| **Camera** | DroidCam (Android app + PC client) | Use phone as high-quality webcam |
+| **Dataset** | Roboflow | Image annotation, augmentation, YOLOv8 export |
+| **Dev Tools** | Node.js (npm), Git | Frontend package management, version control |
 
 ---
 
-## Project Structure
+## 📖 Table of Contents
+
+1. [Project Overview](#-project-overview)
+2. [How It Works](#-how-it-works)
+3. [System Architecture](#-system-architecture)
+4. [Camera Setup — DroidCam](#-camera-setup--droidcam-phone-as-webcam)
+5. [Folder Structure](#-folder-structure)
+6. [Prerequisites](#-prerequisites)
+7. [Account Setup](#-account-setup-sendgrid--mysql)
+8. [Installation — Windows](#-installation--windows)
+9. [Installation — macOS](#-installation--macos)
+10. [Environment Variables (.env)](#-environment-variables-env-file)
+11. [Database Setup](#-database-setup)
+12. [Adding Your Login Email](#-adding-your-login-email-to-database)
+13. [Dataset Download & Model Training](#-dataset-download--model-training)
+14. [Running the Project](#-running-the-project)
+15. [Using the System](#-using-the-system)
+16. [Troubleshooting](#-troubleshooting)
+
+---
+
+## 🎯 Project Overview
+
+The **Real-Time Biscuit Quality Inspection System** is a production-grade AI application that uses deep learning to automatically detect and classify biscuit defects from a live camera feed — replacing slow, unreliable manual inspection on production lines.
+
+### What It Does
+- Detects biscuits in real-time from a webcam or DroidCam phone camera
+- Classifies each biscuit as **Good ✅**, **Broken ❌**, or **Burnt 🔥**
+- Supports 3 biscuit brands: **Monaco**, **Parle-G**, **Marie**
+- Logs every confirmed detection to a **MySQL database** batch-wise
+- Displays live analytics on a **React dashboard**
+- Exports history as **CSV files**
+
+### Why This Matters
+> Manual inspection on high-speed biscuit lines misses up to 15% of defects due to human fatigue. A single production line processes 800–1,200 biscuits per minute — impossible to inspect individually. This system provides AI-grade inspection that is easily deployable.
+
+---
+
+## ⚙️ How It Works
 
 ```
-biscuit_inspection/
-├── .env                          # All credentials (fill this first)
-├── requirements.txt              # Python deps
-├── setup.bat                     # One-time setup
-├── start_backend.bat             # Start Flask server
-├── start_frontend.bat            # Start React dev server
-├── start_all.bat                 # Launch both in separate windows
+Phone (DroidCam) ──WiFi──► Laptop (DroidCam Client)
+                                    │
+                                    ▼
+                          CamCapture Thread (30fps)
+                           /                    \
+                    _raw_q queue           _infer_q queue
+                         │                        │
+                  FramePush Thread         Inference Thread
+                         │                        │
+                  JPEG encode              Run selected brand's
+                         │                YOLOv8m model ONLY
+                  SocketIO emit                   │
+                         │                Heuristic Filter
+                         ▼                (confidence, area,
+                   React Browser           aspect ratio)
+                   Live Camera Feed               │
+                                         Stability Buffer
+                                        (3 frames must agree)
+                                                  │ YES
+                                                  ▼
+                                          MySQL Database
+                                       (detections, batches)
+                                                  │
+                                                  ▼
+                                         React Dashboard
+                                       (charts, history, CSV)
+```
+
+### Key Design Decisions
+
+| Decision | Reason |
+|----------|--------|
+| **3 separate YOLOv8m models** | Combined training caused cross-brand confusion. Separate models = brand-specific feature learning |
+| **Only selected brand's model runs** | Prevents false labels from other brand models appearing on wrong biscuit |
+| **Stability buffer (3 frames)** | Eliminates single-frame false positives (hands, faces, backgrounds) |
+| **Python threading** | Separates camera capture, display push, and inference so none blocks the other |
+| **DroidCam phone camera** | Laptop webcams are low quality. Phone camera provides HD clarity needed for small biscuit defect detection |
+| **YOLOv8m over YOLOv8n/s** | Broken biscuits have irregular shapes. YOLOv8m's deeper features detect irregular objects better |
+
+---
+
+## 🏗️ System Architecture
+
+```
+C:\Real-time biscuit quality inspection system with YOLOv8\
 │
-├── backend/
-│   ├── app.py                    # Flask + SocketIO entry point
-│   ├── routes/
-│   │   ├── auth.py               # OTP login via SendGrid
-│   │   ├── detection.py          # SocketIO camera/batch control
-│   │   ├── batches.py            # Batch history API
-│   │   ├── dashboard.py          # Analytics API
-│   │   ├── export.py             # CSV export API
-│   │   └── users.py              # Admin user management
-│   ├── middleware/
-│   │   └── auth_middleware.py    # JWT decorator
-│   └── utils/
-│       └── db.py                 # MySQL pool
+├── 📄 .env                          ← All secrets & config (YOU FILL THIS)
+├── 📄 requirements.txt              ← Python dependencies
+├── 📄 detection.py                  ← Standalone detection route (root level copy)
+├── 📄 setup.bat                     ← Windows: installs everything
+├── 📄 start_all.bat                 ← Windows: starts backend + frontend
+├── 📄 start_backend.bat             ← Starts Flask backend only
+├── 📄 start_frontend.bat            ← Starts React frontend only
+├── 📄 README.md
 │
-├── testing/
-│   └── detection_engine.py       # Multi-model inference engine
+├── 📁 backend\
+│   ├── __init__.py
+│   ├── app.py                       ← Flask + SocketIO entry point
+│   ├── 📁 routes\
+│   │   ├── __init__.py
+│   │   ├── auth.py                  ← OTP login via SendGrid
+│   │   ├── detection.py             ← Camera + batch control endpoints
+│   │   ├── batches.py               ← Batch history endpoints
+│   │   ├── dashboard.py             ← Analytics data endpoints
+│   │   ├── export.py                ← CSV export endpoint
+│   │   └── users.py                 ← User management
+│   ├── 📁 middleware\
+│   │   ├── __init__.py
+│   │   └── auth_middleware.py       ← JWT token verification
+│   └── 📁 utils\
+│       ├── __init__.py
+│       └── db.py                    ← MySQL connection & schema init
 │
-├── training/
-│   ├── monaco/train_monaco.py
-│   ├── parle/train_parle.py
-│   └── marie/train_marie.py
+├── 📁 testing\
+│   ├── __init__.py
+│   └── detection_engine.py          ← Multi-threaded YOLOv8 inference engine
 │
-├── frontend/
-│   ├── public/index.html
-│   ├── .env                      # REACT_APP_API_URL etc.
-│   ├── package.json
-│   └── src/
-│       ├── index.js
-│       ├── App.jsx               # Router + ProtectedRoute
-│       ├── context/
-│       │   └── AuthContext.jsx
-│       ├── utils/
-│       │   ├── api.js            # Axios instance
-│       │   └── socket.js         # Socket.IO singleton
-│       ├── styles/
-│       │   └── global.css
-│       ├── components/
-│       │   └── common/
-│       │       └── Layout.jsx    # Sidebar shell
-│       └── pages/
-│           ├── HomePage.jsx      # Landing page
-│           ├── FeaturesPage.jsx  # Features cards
-│           ├── LoginPage.jsx     # OTP login
-│           ├── DetectionPage.jsx # Live camera inspection
-│           ├── DashboardPage.jsx # Analytics charts
-│           └── HistoryPage.jsx   # Batch history + export
+├── 📁 models\                       ← TRAINED .pt FILES GO HERE (after training)
+│   ├── monaco_best.pt               ← copy from training\monaco\runs\...\weights\best.pt
+│   ├── parle_best.pt                ← copy from training\parle\runs\...\weights\best.pt
+│   └── marie_best.pt                ← copy from training\marie\runs\...\weights\best.pt
 │
-├── database/
-│   └── schema.sql                # MySQL tables + stored procedure
+├── 📁 database\
+│   └── schema.sql                   ← MySQL tables & stored procedures
 │
-├── models/                       # Place trained .pt files here
-│   ├── monaco_best.pt
-│   ├── parle_best.pt
-│   └── marie_best.pt
-│
-├── dataset_zips/                 # Place Roboflow ZIPs here for training
-│   ├── Monaco_v10i_yolov8.zip
+├── 📁 dataset_zips\                 ← PASTE DOWNLOADED DATASET ZIPS HERE
+│   ├── Monaco_v10i_yolov8.zip       ← downloaded from Google Drive link below
 │   ├── Parle_v5i_yolov8.zip
 │   └── Marie_v5i_yolov8.zip
 │
-└── scripts/
-    ├── add_user.py               # Add operators/admins to DB
-    ├── test_camera.py            # Verify webcam before starting
-    ├── test_models.py            # Verify .pt files load correctly
-    └── train_all.py              # Run all 3 trainings in sequence
+├── 📁 training\                     ← Training scripts — one per brand
+│   ├── 📁 monaco\
+│   │   ├── train_monaco.py          ← Run this to train Monaco model
+│   │   └── 📁 runs\                 ← Auto-created by YOLOv8 after training
+│   │       └── monaco_YYYYMMDD\
+│   │           └── weights\
+│   │               └── best.pt      ← Copy this to models\monaco_best.pt
+│   ├── 📁 parle\
+│   │   ├── train_parle.py           ← Run this to train Parle-G model
+│   │   └── 📁 runs\
+│   │       └── parle_YYYYMMDD\
+│   │           └── weights\
+│   │               └── best.pt      ← Copy this to models\parle_best.pt
+│   └── 📁 marie\
+│       ├── train_marie.py           ← Run this to train Marie model
+│       └── 📁 runs\
+│           └── marie_YYYYMMDD\
+│               └── weights\
+│                   └── best.pt      ← Copy this to models\marie_best.pt
+│
+├── 📁 exports\                      ← CSV exports saved here (auto-created)
+│
+├── 📁 venv\                         ← Python virtual environment (auto-created)
+│
+├── 📁 scripts\
+│   ├── add_user.py                  ← Add login email to database
+│   ├── test_camera.py               ← Verify camera works
+│   ├── test_models.py               ← Verify all 3 models load
+│   └── train_all.py                 ← Runs all 3 training scripts in sequence
+│
+└── 📁 frontend\
+    ├── .env                         ← Frontend env (API URL)
+    ├── package.json
+    ├── 📁 public\
+    │   └── index.html
+    └── 📁 src\
+        ├── index.js
+        ├── App.jsx
+        ├── 📁 context\
+        │   └── AuthContext.jsx      ← JWT auth state
+        ├── 📁 utils\
+        │   ├── api.js               ← Axios API calls
+        │   └── socket.js            ← SocketIO client
+        ├── 📁 styles\
+        │   └── global.css
+        ├── 📁 components\
+        │   └── common\
+        │       └── Layout.jsx
+        └── 📁 pages\
+            ├── HomePage.jsx         ← Landing / about
+            ├── FeaturesPage.jsx     ← Feature cards
+            ├── LoginPage.jsx        ← OTP login
+            ├── DetectionPage.jsx    ← Live camera + detection
+            ├── DashboardPage.jsx    ← Analytics charts
+            └── HistoryPage.jsx      ← Batch history + CSV export
 ```
 
 ---
 
-## Step-by-Step Setup
+## 📱 Camera Setup — DroidCam (Phone as Webcam)
 
-### Prerequisites
-- Python 3.10 or 3.11 (3.12+ not tested with torch)
-- Node.js 18+
-- MySQL 8.0+
-- Git
-- A webcam
+> This project uses **DroidCam** to use your phone's camera instead of a laptop webcam. Phone cameras provide much higher resolution and image quality — critical for detecting small defects on biscuits.
 
-### 1. Clone / extract project
+### Setup Steps
 
-```bat
-cd C:\Projects
-REM extract the zip or clone here
-cd biscuit_inspection
+**On your Android Phone:**
+1. Install **DroidCam** from Google Play Store (free)
+2. Open the app — note the **WiFi IP address** shown (e.g., `192.168.1.5`)
+3. Keep the app open and phone screen on
+
+**On your Windows Laptop:**
+1. Download & install **DroidCam Windows Client** from [dev47apps.com](https://www.dev47apps.com/)
+2. Open DroidCam client
+3. Enter the IP address shown on your phone
+4. Port: `4747` (default)
+5. Click **Connect**
+6. DroidCam now appears as a webcam (`DroidCam Source`) in your system
+
+**Physical Setup:**
+- Mount your phone on a **tripod** facing downward
+- Place biscuits on a **white chart paper** laid flat below
+- Arrange biscuits of same brand in **2 per row** with clear spacing between rows
+- Ensure good lighting (avoid harsh shadows)
+
+**In `.env` file:**
+```env
+CAMERA_INDEX=1   # DroidCam usually registers as index 1
+                 # If it doesn't work, try 0 or 2
 ```
 
-### 2. Fill `.env`
-
-Open `.env` and set:
+**Test the camera:**
+```cmd
+python scripts\test_camera.py
+# If blank, try:
+python scripts\test_camera.py --index 1
+python scripts\test_camera.py --index 2
 ```
+
+---
+
+## ✅ Prerequisites
+
+### Software to Install
+
+| Software | Version | Download |
+|----------|---------|----------|
+| Python | 3.10 or 3.11 | [python.org](https://python.org/downloads) |
+| Node.js | 18+ LTS | [nodejs.org](https://nodejs.org) |
+| MySQL Server | 8.0 | [mysql.com](https://dev.mysql.com/downloads/mysql/) |
+| MySQL Workbench | Any | [mysql.com](https://dev.mysql.com/downloads/workbench/) (optional, easier DB management) |
+| Git | Latest | [git-scm.com](https://git-scm.com) |
+| DroidCam Client | Latest | [dev47apps.com](https://www.dev47apps.com/) |
+
+> ⚠️ During Python install on Windows — check **"Add Python to PATH"** before clicking Install.
+
+> ⚠️ During MySQL install — note the **root password** you set. You'll need it in `.env`.
+
+---
+
+## 🔑 Account Setup: SendGrid & MySQL
+
+### SendGrid (for OTP email)
+
+SendGrid sends the OTP code to your email when you log in. Without this, login will not work.
+
+1. Go to [sendgrid.com](https://sendgrid.com) → **Sign Up** (free tier is enough)
+2. After signup → **Email API** → **Integration Guide** → **SMTP** or **Web API**
+3. Go to **Settings** → **API Keys** → **Create API Key**
+4. Give it a name: `BiscuitAI`
+5. Select **Full Access** → **Create & View**
+6. **Copy the API key** (starts with `SG.`) — you only see it once!
+7. Go to **Settings** → **Sender Authentication** → **Single Sender Verification**
+8. Add and verify your email address (e.g., `yourname@gmail.com`)
+9. This verified email is your `SENDGRID_SENDER_EMAIL` in `.env`
+
+```env
+SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SENDGRID_SENDER_EMAIL=yourname@gmail.com     ← must be verified on SendGrid
+SENDGRID_SENDER_NAME=BiscuitAI System
+```
+
+> 💡 During development: if OTP email doesn't arrive, check the **backend terminal** — the OTP is printed there as a fallback.
+
+---
+
+## 💻 Installation — Windows
+
+### Step 1 — Clone the Repository
+
+Open **Command Prompt** (`Win + R` → type `cmd` → Enter):
+
+```cmd
+cd C:\
+git clone https://github.com/YOUR_USERNAME/biscuit-quality-inspection.git "Real-time biscuit quality inspection system with YOLOv8"
+cd "Real-time biscuit quality inspection system with YOLOv8"
+```
+
+> Or manually download the ZIP and extract to:
+> `C:\Real-time biscuit quality inspection system with YOLOv8\`
+
+### Step 2 — Create Python Virtual Environment
+
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+
+python -m venv venv
+
+venv\Scripts\activate
+```
+
+You should see `(venv)` at the start of your command line. This means the virtual environment is active.
+
+> ⚠️ **Every time you open a new CMD window**, you must run `venv\Scripts\activate` again before running any Python command.
+
+### Step 3 — Create Required Empty Folders & __init__.py Files
+
+```cmd
+mkdir models
+mkdir exports
+
+type nul > backend\__init__.py
+type nul > backend\routes\__init__.py
+type nul > backend\middleware\__init__.py
+type nul > backend\utils\__init__.py
+type nul > testing\__init__.py
+```
+
+### Step 4 — Fill in the .env File
+
+Open `C:\Real-time biscuit quality inspection system with YOLOv8\.env` in Notepad and fill every value:
+
+```env
+# ── Database ────────────────────────────────────────────
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=biscuit_inspection
 DB_USER=root
-DB_PASSWORD=your_mysql_password
+DB_PASSWORD=YOUR_MYSQL_ROOT_PASSWORD_HERE    ← the password you set during MySQL install
 
-JWT_SECRET=some_long_random_string_here
+# ── Auth ────────────────────────────────────────────────
+JWT_SECRET=biscuitai_super_secret_key_2025_change_this_to_something_random
 
-SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxx
-SENDGRID_SENDER_EMAIL=noreply@biscuitai.com
+# ── SendGrid ────────────────────────────────────────────
+SENDGRID_API_KEY=SG.your_key_here
+SENDGRID_SENDER_EMAIL=yourname@gmail.com     ← must be verified on SendGrid
+SENDGRID_SENDER_NAME=BiscuitAI System
 
-CAMERA_INDEX=0
+# ── Server ──────────────────────────────────────────────
+BACKEND_PORT=5000
+FRONTEND_PORT=3000
+
+# ── Model Paths ─────────────────────────────────────────
+MONACO_MODEL_PATH=models/monaco_best.pt
+PARLE_MODEL_PATH=models/parle_best.pt
+MARIE_MODEL_PATH=models/marie_best.pt
+
+# ── Detection Config ────────────────────────────────────
+CONFIDENCE_THRESHOLD=0.25
+IOU_THRESHOLD=0.45
+CAMERA_INDEX=1                               ← 0 = laptop webcam, 1 = DroidCam
+FRAME_SKIP=2
 ```
 
-### 3. Run setup
+### Step 5 — Install Python Packages
 
-```bat
-setup.bat
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+venv\Scripts\activate
+
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-This will:
-- Create Python virtualenv
-- Install all Python packages (`requirements.txt`)
-- Run `npm install` in `frontend/`
-- Import `database/schema.sql` into MySQL
+> This takes 5–15 minutes on first run (downloads PyTorch, Ultralytics YOLOv8, Flask, etc.)
 
-### 4. Add your first user
+### Step 6 — Install Frontend Packages
 
-```bat
-call venv\Scripts\activate.bat
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8\frontend"
+npm install
+cd ..
+```
+
+> This takes 2–5 minutes.
+
+### Step 7 — Copy Your Trained Models
+
+After training, YOLOv8 saves `best.pt` inside a timestamped folder. Find and copy all 3:
+
+```cmd
+REM List your training runs to find the folder names:
+dir training\monaco\runs\
+dir training\parle\runs\
+dir training\marie\runs\
+
+REM Copy best.pt files (replace timestamps with yours):
+copy training\monaco\runs\monaco_20250101_120000\weights\best.pt models\monaco_best.pt
+copy training\parle\runs\parle_20250101_120000\weights\best.pt   models\parle_best.pt
+copy training\marie\runs\marie_20250101_120000\weights\best.pt   models\marie_best.pt
+```
+
+After copying, verify:
+```cmd
+dir models\
+```
+Expected:
+```
+monaco_best.pt
+parle_best.pt
+marie_best.pt
+```
+
+---
+
+## 🍎 Installation — macOS
+
+> The project works on macOS with minor path differences.
+
+### Step 1 — Clone the Repository
+
+Open **Terminal**:
+
+```bash
+cd ~
+git clone https://github.com/YOUR_USERNAME/biscuit-quality-inspection.git "Real-time biscuit quality inspection system with YOLOv8"
+cd "Real-time biscuit quality inspection system with YOLOv8"
+```
+
+### Step 2 — Install Prerequisites (if not already installed)
+
+```bash
+# Install Homebrew if you don't have it
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python 3.11
+brew install python@3.11
+
+# Install Node.js
+brew install node
+
+# Install MySQL
+brew install mysql
+brew services start mysql
+
+# Set MySQL root password
+mysql_secure_installation
+```
+
+### Step 3 — Virtual Environment
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+> On macOS, use `source venv/bin/activate` instead of `venv\Scripts\activate`
+
+### Step 4 — Create Required Files
+
+```bash
+mkdir -p models exports
+
+touch backend/__init__.py
+touch backend/routes/__init__.py
+touch backend/middleware/__init__.py
+touch backend/utils/__init__.py
+touch testing/__init__.py
+```
+
+### Step 5 — Fill .env
+
+Same content as Windows. Open with:
+```bash
+nano .env
+# or
+open -a TextEdit .env
+```
+
+### Step 6 — Install Packages
+
+```bash
+# Python packages
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Frontend packages
+cd frontend && npm install && cd ..
+```
+
+### Step 7 — Copy Trained Models
+
+```bash
+cp training/monaco/runs/monaco_*/weights/best.pt models/monaco_best.pt
+cp training/parle/runs/parle_*/weights/best.pt   models/parle_best.pt
+cp training/marie/runs/marie_*/weights/best.pt   models/marie_best.pt
+```
+
+---
+
+## 🗃️ Database Setup
+
+### Step 1 — Start MySQL
+
+**Windows:**
+```cmd
+REM MySQL usually auto-starts. Check via:
+services.msc
+REM Find "MySQL80" → right-click → Start
+```
+
+**macOS:**
+```bash
+brew services start mysql
+```
+
+### Step 2 — Create the Database
+
+**Windows:**
+```cmd
+mysql -u root -p
+```
+Enter your MySQL root password, then:
+```sql
+CREATE DATABASE IF NOT EXISTS biscuit_inspection;
+EXIT;
+```
+
+**macOS:**
+```bash
+mysql -u root -p
+```
+Same SQL commands above.
+
+### Step 3 — Import the Schema
+
+**Windows:**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+mysql -u root -p biscuit_inspection < database\schema.sql
+```
+
+**macOS:**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
+mysql -u root -p biscuit_inspection < database/schema.sql
+```
+
+Enter password when prompted. No errors = success.
+
+---
+
+## 👤 Adding Your Login Email to Database
+
+The system uses OTP-based login — no passwords stored. You must add your email to the database first.
+
+**Windows:**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+venv\Scripts\activate
 python scripts\add_user.py
 ```
-Enter email, name, and role when prompted.
 
-### 5. Train the models (skip if you already have `.pt` files)
-
-Place Roboflow ZIPs in `dataset_zips/`:
-- `Monaco_v10i_yolov8.zip`
-- `Parle_v5i_yolov8.zip`
-- `Marie_v5i_yolov8.zip`
-
-Then train:
-```bat
-call venv\Scripts\activate.bat
-python scripts\train_all.py
+**macOS:**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
+source venv/bin/activate
+python scripts/add_user.py
 ```
 
-Training each model takes 1–4 hours depending on GPU.
-Trained weights are automatically copied to `models/`.
+It will prompt:
+```
+Enter email    : yourname@gmail.com
+Enter name     : Your Name
+Role (operator/admin) [operator]: admin
+```
 
-### 6. Verify models
+> ⚠️ The email you enter here **must match** the email you verify on SendGrid — otherwise OTP emails won't send.
 
-```bat
+To add more users, run the script again with a different email.
+
+---
+
+## 🚀 Running the Project
+
+> Open **2 separate terminal/CMD windows**.
+
+### Terminal 1 — Backend
+
+**Windows:**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+venv\Scripts\activate
+set PYTHONPATH=C:\Real-time biscuit quality inspection system with YOLOv8
+python backend\app.py
+```
+
+**macOS:**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
+source venv/bin/activate
+export PYTHONPATH=$(pwd)
+python backend/app.py
+```
+
+Wait for this output before proceeding:
+```
+════════════════════════════════════════════════════════════
+  🍪  BiscuitAI — Real-Time Quality Inspection System
+════════════════════════════════════════════════════════════
+[DB] Schema initialised
+[monaco] Loading models/monaco_best.pt ...
+[parle]  Loading models/parle_best.pt  ...
+[marie]  Loading models/marie_best.pt  ...
+[monaco] ✓ Ready in 3200 ms
+[parle]  ✓ Ready in 2900 ms
+[marie]  ✓ Ready in 3100 ms
+  Server  : http://localhost:5000
+════════════════════════════════════════════════════════════
+```
+
+> ⚠️ All 3 models must say `✓ Ready` before opening the browser.
+
+### Terminal 2 — Frontend
+
+**Windows:**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8\frontend"
+npm install
+npm start
+```
+
+**macOS:**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8/frontend
+npm install
+npm start
+```
+
+Browser opens automatically at **http://localhost:3000**
+
+---
+
+## 🏋️ Dataset Download & Model Training
+
+> Each of the 3 biscuit brands has its own YOLOv8m model trained separately. Combined training caused cross-brand confusion, so models are kept brand-specific.
+
+### Step 1 — Download the Datasets
+
+The dataset zip files are too large for GitHub (50MB+ each). Download all 3 from Google Drive:
+
+> **📥 Google Drive Link: [PASTE YOUR GOOGLE DRIVE LINK HERE]**
+
+
+After downloading, paste all 3 zip files into:
+```
+dataset_zips\
+├── Monaco_v10i_yolov8.zip
+├── Parle_v5i_yolov8.zip
+└── Marie_v5i_yolov8.zip
+```
+
+> These are Roboflow exports in YOLOv8 format with bounding boxes and augmentations already applied. Classes in all 3: `['Broken', 'Burnt', 'Good']`
+
+---
+
+### Step 2 — Extract the Datasets
+
+**Windows (CMD):**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+
+REM Extract Monaco dataset
+mkdir training\monaco\dataset
+tar -xf dataset_zips\Monaco_v10i_yolov8.zip -C training\monaco\dataset
+
+REM Extract Parle dataset
+mkdir training\parle\dataset
+tar -xf dataset_zips\Parle_v5i_yolov8.zip -C training\parle\dataset
+
+REM Extract Marie dataset
+mkdir training\marie\dataset
+tar -xf dataset_zips\Marie_v5i_yolov8.zip -C training\marie\dataset
+```
+
+Or extract manually using Windows right-click → Extract All into the respective `training\<brand>\dataset\` folders.
+
+**macOS (Terminal):**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
+
+mkdir -p training/monaco/dataset training/parle/dataset training/marie/dataset
+
+unzip dataset_zips/Monaco_v10i_yolov8.zip -d training/monaco/dataset
+unzip dataset_zips/Parle_v5i_yolov8.zip   -d training/parle/dataset
+unzip dataset_zips/Marie_v5i_yolov8.zip   -d training/marie/dataset
+```
+
+After extraction each folder should contain:
+```
+training\monaco\dataset\
+    ├── train\
+    │   ├── images\
+    │   └── labels\
+    ├── valid\
+    │   ├── images\
+    │   └── labels\
+    ├── test\
+    │   ├── images\
+    │   └── labels\
+    └── data.yaml           ← points YOLOv8 to the dataset
+```
+
+---
+
+### Step 3 — Train Each Model
+
+Make sure your venv is active and you are in the project root.
+
+**Windows:**
+```cmd
+cd "C:\Real-time biscuit quality inspection system with YOLOv8"
+venv\Scripts\activate
+```
+
+**macOS:**
+```bash
+cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
+source venv/bin/activate
+```
+
+#### Train Monaco Model
+```cmd
+python training\monaco\train_monaco.py
+```
+Training takes approximately **3–5 hours** on CPU, or **30–60 minutes** on GPU.
+Watch for output like:
+```
+Epoch 100/100 ── box_loss: 0.042  cls_loss: 0.018  mAP50: 0.891
+Training complete. Best model saved to:
+  training\monaco\runs\monaco_YYYYMMDD_HHMMSS\weights\best.pt
+```
+
+#### Train Parle-G Model
+```cmd
+python training\parle\train_parle.py
+```
+
+#### Train Marie Model
+```cmd
+python training\marie\train_marie.py
+```
+
+---
+
+### Step 4 — Copy best.pt to models\ folder
+
+After each training run, YOLOv8 saves the best weights inside a timestamped folder. You need to copy them to the `models\` folder with the exact filenames the app expects.
+
+**Windows:**
+```cmd
+REM First, check what your run folder is named:
+dir training\monaco\runs\
+dir training\parle\runs\
+dir training\marie\runs\
+
+REM Then copy (replace the timestamp with your actual folder name):
+copy training\monaco\runs\monaco_20250101_120000\weights\best.pt models\monaco_best.pt
+copy training\parle\runs\parle_20250101_120000\weights\best.pt   models\parle_best.pt
+copy training\marie\runs\marie_20250101_120000\weights\best.pt   models\marie_best.pt
+```
+
+**macOS:**
+```bash
+cp training/monaco/runs/monaco_*/weights/best.pt models/monaco_best.pt
+cp training/parle/runs/parle_*/weights/best.pt   models/parle_best.pt
+cp training/marie/runs/marie_*/weights/best.pt   models/marie_best.pt
+```
+
+After copying, verify:
+```cmd
+dir models\
+```
+Expected output:
+```
+marie_best.pt       XX,XXX,XXX bytes
+monaco_best.pt      XX,XXX,XXX bytes
+parle_best.pt       XX,XXX,XXX bytes
+```
+
+---
+
+### Step 5 — Verify Models Load Correctly
+
+```cmd
 python scripts\test_models.py
 ```
 
-### 7. Test camera
+Expected output:
+```
+[MONACO]
+  ✓  File exists  : models/monaco_best.pt (52.3 MB)
+  ✓  Loaded       : 3200 ms
+  ✓  Inference    : 78 ms
+  ✓  Classes      : ['Broken', 'Burnt', 'Good']
 
-```bat
+[PARLE]
+  ✓  File exists  : models/parle_best.pt (52.3 MB)
+  ✓  Loaded       : 2900 ms
+  ✓  Inference    : 75 ms
+  ✓  Classes      : ['Broken', 'Burnt', 'Good']
+
+[MARIE]
+  ✓  File exists  : models/marie_best.pt (52.3 MB)
+  ✓  Loaded       : 3100 ms
+  ✓  Inference    : 80 ms
+  ✓  Classes      : ['Broken', 'Burnt', 'Good']
+
+✓  All models verified — ready to run.
+```
+
+If any model says `File not found` → go back to Step 4 and verify the copy.
+
+---
+
+### Why YOLOv8m?
+
+| Model | Parameters | mAP@0.5 | CPU Inference | Broken Class Detection |
+|-------|-----------|---------|--------------|----------------------|
+| YOLOv8n | 3.2M | 37.3% | ~45ms | Poor — misses irregular shapes |
+| YOLOv8s | 11.2M | 44.9% | ~80ms | Moderate |
+| **YOLOv8m** ✓ | **25.9M** | **50.2%** | **~120ms** | **Best — handles irregular fragments** |
+
+Broken biscuits have no fixed shape or size. YOLOv8m's deeper feature extraction (25.9M parameters vs 3.2M in nano) learns these irregular patterns far better. The extra ~40ms per frame is a worthwhile trade for production accuracy.
+
+---
+
+### Verify Everything Works Before Running
+
+```cmd
+REM 1. Test all 3 models load correctly
+python scripts\test_models.py
+
+REM 2. Test camera
 python scripts\test_camera.py
-```
-If camera doesn't open, try `--index 1`.
-Update `CAMERA_INDEX` in `.env` accordingly.
 
-### 8. Start the system
-
-```bat
-start_all.bat
-```
-
-Or in separate terminals:
-```bat
-REM Terminal 1
-start_backend.bat
-
-REM Terminal 2
-start_frontend.bat
-```
-
-### 9. Open in browser
-
-```
-http://localhost:3000
+REM 3. Check MySQL connection
+python -c "from backend.utils.db import get_db; conn = get_db(); print('DB OK')"
 ```
 
 ---
 
-## Inspection Workflow
+## 📊 Detection Logic Summary
 
-1. **Home** → Read about the project
-2. **Features** → Understand capabilities
-3. **Sign In** → Enter email → receive OTP → enter OTP
-4. **Detection page**:
-   - Click **Start Camera**
-   - Select brand (Monaco / Parle-G / Marie)
-   - Click **Start Batch**
-   - Place **2 biscuits** in front of the camera (side by side)
-   - Detections appear with: `Brand | Quality | Confidence%`
-   - Click **Stop Batch** when done
-   - Click **Stop Camera**
-5. **Dashboard** → View analytics, trends, defect rates
-6. **History** → Browse all batches, click **View** for detail, export CSV
-
----
-
-## Detection Logic
-
-- All 3 models load at startup (no delay during batch)
-- Every frame is sent to all 3 models **in parallel threads**
-- Results from all models are merged; overlapping boxes (IoU > 0.4) keep highest confidence
-- Heuristic filters reject non-biscuit objects:
-  - Minimum area: 0.5% of frame
-  - Maximum area: 60% of frame
-  - Maximum aspect ratio: 3.5× (rejects hands/arms)
-  - Minimum confidence: 55%
-- **Stability buffer**: 3 consecutive frames must agree before a detection is logged
-- Only logs when **exactly 2** biscuits are detected
+```
+Frame arrives from camera
+       ↓
+Run selected brand's YOLOv8m model
+       ↓
+Filter detections:
+  • confidence ≥ 0.25
+  • area: 0.2% to 70% of frame
+  • aspect ratio ≤ 4.5 (removes thin lines/hands)
+       ↓
+Non-Maximum Suppression (remove overlapping boxes)
+       ↓
+Check count == 2 biscuits visible?
+  → NO: reset stability buffer, try next frame
+  → YES: add to stability buffer
+       ↓
+3 consecutive frames all agree on same detections?
+  → NO: keep buffering
+  → YES: CONFIRMED → log to MySQL database
+       ↓
+Draw bounding boxes on frame
+Add label: "Parle-G | Burnt | 94.2%"
+Send annotated frame to browser via SocketIO
+```
 
 ---
 
-## Troubleshooting
+## 🤝 Contributing
 
-| Problem | Fix |
-|---------|-----|
-| Camera won't open | Try `CAMERA_INDEX=1` in `.env` |
-| Model not found | Check `models/` folder has `.pt` files |
-| DB connection error | Verify MySQL is running, check `.env` credentials |
-| OTP not received | Check `SENDGRID_API_KEY`, verify sender in SendGrid console |
-| Detection too slow | Increase `FRAME_SKIP` in `.env` (e.g. `FRAME_SKIP=4`) |
-| False detections | Increase `CONFIDENCE_THRESHOLD` to `0.65` in `.env` |
+This is a final year B.Tech OpenCV project. Contributions, suggestions, and improvements are welcome.
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Commit: `git commit -m "Add your feature"`
+4. Push: `git push origin feature/your-feature`
+5. Open a Pull Request
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
