@@ -13,7 +13,7 @@
 | **Charts** | Recharts | Analytics dashboard — defect trends, brand comparisons |
 | **Database** | MySQL 8.0 | Batch-wise detection history, hourly stats, user data |
 | **Auth** | SendGrid (OTP email), JWT | Passwordless login via one-time passcode |
-| **Camera** | DroidCam (Android app + PC client) | Use phone as high-quality webcam |
+| **Camera** | DroidCam (Android app + PC client) | Use phone as high-quality WiFi webcam |
 | **Dataset** | Roboflow | Image annotation, augmentation, YOLOv8 export |
 | **Dev Tools** | Node.js (npm), Git | Frontend package management, version control |
 
@@ -36,7 +36,6 @@
 13. [Dataset Download & Model Training](#-dataset-download--model-training)
 14. [Running the Project](#-running-the-project)
 15. [Using the System](#-using-the-system)
-16. [Troubleshooting](#-troubleshooting)
 
 ---
 
@@ -53,7 +52,7 @@ The **Real-Time Biscuit Quality Inspection System** is a production-grade AI app
 - Exports history as **CSV files**
 
 ### Why This Matters
-> Manual inspection on high-speed biscuit lines misses up to 15% of defects due to human fatigue. A single production line processes 800–1,200 biscuits per minute — impossible to inspect individually. This system provides AI-grade inspection that is easily deployable.
+> Manual inspection on high-speed biscuit lines misses up to 15% of defects due to human fatigue. A single production line processes 800–1,200 biscuits per minute — impossible to inspect individually. This system provides AI-grade inspection deployable with just a phone camera and a standard PC.
 
 ---
 
@@ -152,23 +151,29 @@ C:\Real-time biscuit quality inspection system with YOLOv8\
 │
 ├── 📁 training\                     ← Training scripts — one per brand
 │   ├── 📁 monaco\
+│   │   ├── 📁 dataset\              ← Extract Monaco zip here
+│   │   │   ├── train\images\ + labels\
+│   │   │   ├── valid\images\ + labels\
+│   │   │   ├── test\images\ + labels\
+│   │   │   ├── data.yaml            ← Roboflow dataset config
+│   │   │   └── README.roboflow
+│   │   ├── 📁 runs\                 ← Auto-created by YOLOv8 after training
+│   │   │   └── monaco_YYYYMMDD\weights\best.pt  ← Copy to models\monaco_best.pt
 │   │   ├── train_monaco.py          ← Run this to train Monaco model
-│   │   └── 📁 runs\                 ← Auto-created by YOLOv8 after training
-│   │       └── monaco_YYYYMMDD\
-│   │           └── weights\
-│   │               └── best.pt      ← Copy this to models\monaco_best.pt
+│   │   ├── yolo26n.pt               ← YOLOv8 nano base weights
+│   │   └── yolov8m.pt               ← YOLOv8 medium base weights (used for training)
 │   ├── 📁 parle\
-│   │   ├── train_parle.py           ← Run this to train Parle-G model
-│   │   └── 📁 runs\
-│   │       └── parle_YYYYMMDD\
-│   │           └── weights\
-│   │               └── best.pt      ← Copy this to models\parle_best.pt
+│   │   ├── 📁 dataset\              ← Extract Parle zip here
+│   │   ├── 📁 runs\
+│   │   ├── train_parle.py
+│   │   ├── yolo26n.pt
+│   │   └── yolov8m.pt
 │   └── 📁 marie\
-│       ├── train_marie.py           ← Run this to train Marie model
-│       └── 📁 runs\
-│           └── marie_YYYYMMDD\
-│               └── weights\
-│                   └── best.pt      ← Copy this to models\marie_best.pt
+│       ├── 📁 dataset\              ← Extract Marie zip here
+│       ├── 📁 runs\
+│       ├── train_marie.py
+│       ├── yolo26n.pt
+│       └── yolov8m.pt
 │
 ├── 📁 exports\                      ← CSV exports saved here (auto-created)
 │
@@ -231,7 +236,7 @@ C:\Real-time biscuit quality inspection system with YOLOv8\
 **Physical Setup:**
 - Mount your phone on a **tripod** facing downward
 - Place biscuits on a **white chart paper** laid flat below
-- Arrange biscuits of same brand in **2 per row** with clear spacing between rows
+- Arrange biscuits in **2 per row** with clear spacing between rows
 - Ensure good lighting (avoid harsh shadows)
 
 **In `.env` file:**
@@ -637,18 +642,59 @@ Wait for this output before proceeding:
 **Windows:**
 ```cmd
 cd "C:\Real-time biscuit quality inspection system with YOLOv8\frontend"
-npm install
 npm start
 ```
 
 **macOS:**
 ```bash
 cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8/frontend
-npm install
 npm start
 ```
 
 Browser opens automatically at **http://localhost:3000**
+
+---
+
+## 🎮 Using the System
+
+```
+1. Open http://localhost:3000
+
+2. HOME PAGE
+   └── Read about the project → click "Get Started"
+
+3. FEATURES PAGE
+   └── Browse all features in card layout
+
+4. LOGIN PAGE
+   └── Enter the email you added via add_user.py
+   └── Click "Send OTP"
+   └── Check your email inbox for the 6-digit code
+   └── Enter OTP → you're logged in with a JWT token
+
+5. DETECTION PAGE
+   └── Click [Start Camera]        ← webcam/DroidCam activates
+   └── Select brand from dropdown  ← Monaco / Parle-G / Marie
+   └── Click [Start Batch]         ← batch starts, DB record created
+   └── Place 2 biscuits in camera view
+   └── Watch live detections appear with:
+           Brand name (Monaco / Parle-G / Marie)
+           Classification (Good / Broken / Burnt)
+           Confidence score (e.g., 94.3%)
+   └── Click [Stop Batch]          ← batch finalised in DB
+   └── Click [Stop Camera]         ← camera released
+
+6. DASHBOARD PAGE
+   └── Per-brand defect vs good percentage charts
+   └── Time-based detection trend lines
+   └── Hourly production stats
+   └── 3-brand comparison charts
+
+7. HISTORY PAGE
+   └── Browse all batches with timestamps
+   └── Click any batch to see detection log
+   └── Click [Export CSV] to download as spreadsheet
+```
 
 ---
 
@@ -660,10 +706,24 @@ Browser opens automatically at **http://localhost:3000**
 
 The dataset zip files are too large for GitHub (50MB+ each). Download all 3 from Google Drive:
 
-> **📥 Google Drive Link: [PASTE YOUR GOOGLE DRIVE LINK HERE]**
+> **📥 Google Drive Link:
+>       Marie - https://drive.google.com/file/d/1WnDkNyph0YB131u9cx-_UL9BuIKJq6kG/view?usp=sharing
+>       Monaco - https://drive.google.com/file/d/1ceLjVMlRiKfc6-_heY06UbRdu_FyXH07/view?usp=sharing
+>       Parle - https://drive.google.com/file/d/1d2hGcBAn1bt8Yhq31r26ViVuqG0WkOwH/view?usp=sharing**
 
+The folder contains:
+```
+Monaco_v10i_yolov8.zip
+Parle_v5i_yolov8.zip
+Marie_v5i_yolov8.zip
+```
 
 After downloading, paste all 3 zip files into:
+```
+C:\Real-time biscuit quality inspection system with YOLOv8\dataset_zips\
+```
+
+Your `dataset_zips\` folder should look like:
 ```
 dataset_zips\
 ├── Monaco_v10i_yolov8.zip
@@ -675,52 +735,120 @@ dataset_zips\
 
 ---
 
-### Step 2 — Extract the Datasets
+### Step 2 — Extract the Datasets Directly to Correct Locations
 
-**Windows (CMD):**
+Run this single command — it creates all required folders and extracts each zip directly into the right location automatically.
+
+**Windows (CMD) — run from project root:**
 ```cmd
 cd "C:\Real-time biscuit quality inspection system with YOLOv8"
 
-REM Extract Monaco dataset
-mkdir training\monaco\dataset
-tar -xf dataset_zips\Monaco_v10i_yolov8.zip -C training\monaco\dataset
+python -c "
+import zipfile, os
 
-REM Extract Parle dataset
-mkdir training\parle\dataset
-tar -xf dataset_zips\Parle_v5i_yolov8.zip -C training\parle\dataset
+BASE   = r'C:\Real-time biscuit quality inspection system with YOLOv8'
+ZIPS   = os.path.join(BASE, 'dataset_zips')
 
-REM Extract Marie dataset
-mkdir training\marie\dataset
-tar -xf dataset_zips\Marie_v5i_yolov8.zip -C training\marie\dataset
+datasets = {
+    'Monaco_v10i_yolov8.zip' : os.path.join(BASE, 'training', 'monaco', 'dataset'),
+    'Parle_v5i_yolov8.zip'   : os.path.join(BASE, 'training', 'parle',  'dataset'),
+    'Marie_v5i_yolov8.zip'   : os.path.join(BASE, 'training', 'marie',  'dataset'),
+}
+
+for zip_name, dest in datasets.items():
+    zip_path = os.path.join(ZIPS, zip_name)
+    if not os.path.exists(zip_path):
+        print(f'[SKIP]  {zip_name} not found in dataset_zips\\')
+        continue
+    os.makedirs(dest, exist_ok=True)
+    print(f'[...] Extracting {zip_name} -> {dest}')
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.extractall(dest)
+    print(f'[ OK] {zip_name} extracted successfully')
+
+print()
+print('Done! Verify below:')
+for brand in ['monaco', 'parle', 'marie']:
+    d = os.path.join(BASE, 'training', brand, 'dataset')
+    status = 'OK' if os.path.isdir(os.path.join(d, 'train')) else 'MISSING'
+    print(f'  [{status}] training\\{brand}\\dataset\\train\\')
+"
 ```
 
-Or extract manually using Windows right-click → Extract All into the respective `training\<brand>\dataset\` folders.
-
-**macOS (Terminal):**
+**macOS (Terminal) — run from project root:**
 ```bash
 cd ~/Real-time\ biscuit\ quality\ inspection\ system\ with\ YOLOv8
 
-mkdir -p training/monaco/dataset training/parle/dataset training/marie/dataset
+python3 -c "
+import zipfile, os
 
-unzip dataset_zips/Monaco_v10i_yolov8.zip -d training/monaco/dataset
-unzip dataset_zips/Parle_v5i_yolov8.zip   -d training/parle/dataset
-unzip dataset_zips/Marie_v5i_yolov8.zip   -d training/marie/dataset
+BASE   = os.path.expanduser('~/Real-time biscuit quality inspection system with YOLOv8')
+ZIPS   = os.path.join(BASE, 'dataset_zips')
+
+datasets = {
+    'Monaco_v10i_yolov8.zip' : os.path.join(BASE, 'training', 'monaco', 'dataset'),
+    'Parle_v5i_yolov8.zip'   : os.path.join(BASE, 'training', 'parle',  'dataset'),
+    'Marie_v5i_yolov8.zip'   : os.path.join(BASE, 'training', 'marie',  'dataset'),
+}
+
+for zip_name, dest in datasets.items():
+    zip_path = os.path.join(ZIPS, zip_name)
+    if not os.path.exists(zip_path):
+        print(f'[SKIP]  {zip_name} not found in dataset_zips/')
+        continue
+    os.makedirs(dest, exist_ok=True)
+    print(f'[...] Extracting {zip_name} -> {dest}')
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.extractall(dest)
+    print(f'[ OK] {zip_name} extracted successfully')
+
+print()
+print('Done! Verify below:')
+for brand in ['monaco', 'parle', 'marie']:
+    d = os.path.join(BASE, 'training', brand, 'dataset')
+    status = 'OK' if os.path.isdir(os.path.join(d, 'train')) else 'MISSING'
+    print(f'  [{status}] training/{brand}/dataset/train/')
+"
 ```
 
-After extraction each folder should contain:
+Expected output after running:
 ```
-training\monaco\dataset\
-    ├── train\
-    │   ├── images\
-    │   └── labels\
-    ├── valid\
-    │   ├── images\
-    │   └── labels\
-    ├── test\
-    │   ├── images\
-    │   └── labels\
-    └── data.yaml           ← points YOLOv8 to the dataset
+[...] Extracting Monaco_v10i_yolov8.zip -> C:\...\training\monaco\dataset
+[ OK] Monaco_v10i_yolov8.zip extracted successfully
+[...] Extracting Parle_v5i_yolov8.zip  -> C:\...\training\parle\dataset
+[ OK] Parle_v5i_yolov8.zip extracted successfully
+[...] Extracting Marie_v5i_yolov8.zip  -> C:\...\training\marie\dataset
+[ OK] Marie_v5i_yolov8.zip extracted successfully
+
+Done! Verify below:
+  [ OK] training\monaco\dataset\train\
+  [ OK] training\parle\dataset\train\
+  [ OK] training\marie\dataset\train\
 ```
+
+If any line shows `[SKIP]` — the zip is not in `dataset_zips\`. Check the filename matches exactly.
+
+After extraction each brand folder looks like this:
+```
+training\marie\
+    ├── dataset\                  ← extracted directly here ✓
+    │   ├── train\
+    │   │   ├── images\
+    │   │   └── labels\
+    │   ├── valid\
+    │   │   ├── images\
+    │   │   └── labels\
+    │   ├── test\
+    │   │   ├── images\
+    │   │   └── labels\
+    │   ├── data.yaml             ← YOLOv8 dataset config (Roboflow generated)
+    │   └── README.roboflow
+    ├── runs\                     ← auto-created by YOLOv8 during training
+    ├── train_marie.py
+    ├── yolo26n.pt
+    └── yolov8m.pt
+```
+Same structure for `training\monaco\` and `training\parle\`.
 
 ---
 
@@ -761,6 +889,12 @@ python training\parle\train_parle.py
 ```cmd
 python training\marie\train_marie.py
 ```
+
+> You can also run all 3 one after another automatically:
+> ```cmd
+> python scripts\train_all.py
+> ```
+> This runs Monaco → Parle → Marie sequentially. Leave it running overnight.
 
 ---
 
@@ -888,11 +1022,12 @@ Add label: "Parle-G | Burnt | 94.2%"
 Send annotated frame to browser via SocketIO
 ```
 
+
 ---
 
 ## 🤝 Contributing
 
-This is a final year B.Tech OpenCV project. Contributions, suggestions, and improvements are welcome.
+This is a final year B.Tech project. Contributions, suggestions, and improvements are welcome.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/your-feature`
@@ -908,3 +1043,5 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ---
 
+
+</div>
