@@ -43,6 +43,22 @@
 
 The **Real-Time Biscuit Quality Inspection System** is a production-grade AI application that uses deep learning to automatically detect and classify biscuit defects from a live camera feed — replacing slow, unreliable manual inspection on production lines.
 
+
+<img width="1896" height="872" alt="image" src="https://github.com/user-attachments/assets/61e53a58-8a0a-427b-9e4d-787f469f3728" />
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/8cedf56c-4821-4b44-b003-cf4934260655" />
+<img width="1892" height="862" alt="image" src="https://github.com/user-attachments/assets/c6f79725-619f-4858-98d6-c0f08a0dd5dc" />
+<img width="1905" height="862" alt="image" src="https://github.com/user-attachments/assets/77d95cc3-7fd8-4156-b474-f357d91d5d28" />
+<img width="1907" height="862" alt="image" src="https://github.com/user-attachments/assets/422441c7-328d-4fe9-9c24-863c38422559" />
+<img width="1905" height="862" alt="image" src="https://github.com/user-attachments/assets/b8e45fd0-02da-4fb6-8ac2-f254b8bc7e68" />
+<img width="1902" height="857" alt="image" src="https://github.com/user-attachments/assets/03ca8fde-2a39-41f1-84e7-c4221c2f1803" />
+
+
+
+
+
+
+
+
 ### What It Does
 - Detects biscuits in real-time from a webcam or DroidCam phone camera
 - Classifies each biscuit as **Good ✅**, **Broken ❌**, or **Burnt 🔥**
