@@ -1,0 +1,168 @@
+SYSTEM ARCHITECTURE & DETECTION FLOW — BiscuitAI
+
+=== FOLDER STRUCTURE ===
+
+Root: C:\Real-time biscuit quality inspection system with YOLOv8\
+- .env: environment variables and secrets
+- requirements.txt: Python dependencies
+- detection.py: standalone detection route at root level
+- setup.bat: Windows batch file to install everything
+- start_all.bat: starts both backend and frontend
+- start_backend.bat: starts Flask backend only
+- start_frontend.bat: starts React frontend only
+
+backend\ folder:
+- app.py: Flask + SocketIO application entry point
+- routes\auth.py: OTP login via SendGrid
+- routes\detection.py: camera and batch control API endpoints
+- routes\batches.py: batch history endpoints
+- routes\dashboard.py: analytics data endpoints
+- routes\export.py: CSV export endpoint
+- routes\users.py: user management
+- middleware\auth_middleware.py: JWT token verification
+- utils\db.py: MySQL connection and schema initialization
+
+testing\ folder:
+- detection_engine.py: the core multi-threaded YOLOv8 inference engine
+
+models\ folder:
+- monaco_best.pt: trained Monaco model weights
+- parle_best.pt: trained Parle-G model weights
+- marie_best.pt: trained Marie model weights
+
+training\ folder:
+- monaco\train_monaco.py: training script for Monaco
+- parle\train_parle.py: training script for Parle-G
+- marie\train_marie.py: training script for Marie
+- Each brand folder has: dataset\, runs\, yolov8m.pt
+
+database\ folder:
+- schema.sql: MySQL table definitions and stored procedures
+
+scripts\ folder:
+- add_user.py: add login email to database
+- test_camera.py: verify camera works
+- test_models.py: verify all 3 models load correctly
+- train_all.py: run all 3 training scripts in sequence
+
+frontend\src\ folder:
+- pages\HomePage.jsx: landing page with project info
+- pages\FeaturesPage.jsx: feature cards
+- pages\LoginPage.jsx: OTP login page
+- pages\DetectionPage.jsx: live camera + detection UI
+- pages\DashboardPage.jsx: analytics charts
+- pages\HistoryPage.jsx: batch history + CSV export
+- context\AuthContext.jsx: JWT auth state management
+- utils\api.js: Axios API calls
+- utils\socket.js: SocketIO client
+
+=== DETECTION ENGINE FLOW ===
+
+Step 1 - Frame Capture:
+Camera (DroidCam or webcam) → CamCapture Thread reads frames at 30fps
+Frames placed into two queues simultaneously:
+- _raw_q: for display only
+- _infer_q: for inference (every 2nd frame, controlled by FRAME_SKIP)
+
+Step 2 - Display Push:
+FramePush Thread reads from _raw_q
+Encodes frame as JPEG using OpenCV cv2.imencode()
+Emits frame via Flask-SocketIO to React browser
+Browser displays live camera feed
+
+Step 3 - Inference:
+Inference Thread reads from _infer_q
+Runs ONLY the selected brand's YOLOv8m model (not all 3)
+Why only selected brand? Prevents cross-brand label contamination
+Uses ThreadPoolExecutor for parallel processing
+
+Step 4 - Heuristic Filtering:
+Raw detections filtered by:
+- Confidence >= 0.25 (rejects uncertain detections)
+- Area 0.2% to 70% of frame (rejects tiny noise and huge false detections)
+- Aspect ratio <= 4.5 (rejects thin lines, fingers, edges)
+NMS applied to remove overlapping duplicate boxes
+
+Step 5 - Stability Buffer:
+Detection result added to buffer
+If 3 consecutive frames agree on same detections → CONFIRMED
+If any frame disagrees → buffer resets, starts over
+This eliminates all single-frame false positives
+
+Step 6 - Database Logging:
+Confirmed detection sent to DBLog Thread
+INSERT into detections table linked to current batch_id
+UPDATE batches table with running counts
+CALL upsert_hourly_stats() stored procedure
+Emit detection_result event via SocketIO to React frontend
+
+Step 7 - UI Update:
+React DetectionPage receives detection_result event
+Updates detection log list showing: Brand | Class | Confidence
+Updates bounding box overlay on live camera frame
+Updates running counts for current batch
+
+=== API ENDPOINTS ===
+
+POST /api/auth/send-otp: send OTP to email
+POST /api/auth/verify-otp: verify OTP, return JWT token
+POST /api/detection/start-camera: open camera, load models
+POST /api/detection/stop-camera: release camera
+POST /api/detection/start-batch: create batch record, activate brand model
+POST /api/detection/stop-batch: finalize batch counts
+GET /api/batches: list all batches with pagination
+GET /api/batches/:id: get single batch with all detections
+GET /api/dashboard/stats: overall statistics
+GET /api/dashboard/trends: hourly trend data
+GET /api/dashboard/brand-comparison: per-brand defect rates
+GET /api/export/csv/:batch_id: download batch as CSV
+GET /api/export/csv/all: download all history as CSV
+
+=== DATABASE SCHEMA ===
+
+users table: id, email, name, role, created_at
+batches table: id, brand, start_time, end_time, total_good, total_broken, total_burnt, total_count
+detections table: id, batch_id, brand, classification, confidence, timestamp
+hourly_stats table: id, hour_timestamp, brand, good_count, broken_count, burnt_count
+
+=== HOW TO RUN THE PROJECT ===
+
+Prerequisites: Python 3.10+, Node.js 18+, MySQL 8.0, Git, DroidCam
+
+Step 1: Clone repository to C:\Real-time biscuit quality inspection system with YOLOv8\
+Step 2: Create Python virtual environment: python -m venv venv
+Step 3: Activate venv: venv\Scripts\activate
+Step 4: Fill .env file with MySQL password, SendGrid API key, Anthropic API key
+Step 5: Install Python packages: pip install -r requirements.txt
+Step 6: Install frontend: cd frontend && npm install
+Step 7: Setup MySQL database: mysql -u root -p biscuit_inspection < database\schema.sql
+Step 8: Add login email: python scripts\add_user.py
+Step 9: Download datasets from Google Drive, place in dataset_zips\
+Step 10: Extract datasets using provided Python extraction script
+Step 11: Train models: python training\monaco\train_monaco.py (repeat for parle and marie)
+Step 12: Copy best.pt files to models\ folder
+Step 13: Terminal 1: set PYTHONPATH=C:\... && python backend\app.py
+Step 14: Terminal 2: cd frontend && npm start
+Step 15: Open browser at http://localhost:3000
+
+=== ENVIRONMENT VARIABLES (.env) ===
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=biscuit_inspection
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+JWT_SECRET=your_secret_key
+SENDGRID_API_KEY=SG.your_key
+SENDGRID_SENDER_EMAIL=your_verified_email@gmail.com
+SENDGRID_SENDER_NAME=BiscuitAI System
+BACKEND_PORT=5000
+FRONTEND_PORT=3000
+MONACO_MODEL_PATH=models/monaco_best.pt
+PARLE_MODEL_PATH=models/parle_best.pt
+MARIE_MODEL_PATH=models/marie_best.pt
+CONFIDENCE_THRESHOLD=0.25
+IOU_THRESHOLD=0.45
+CAMERA_INDEX=1
+FRAME_SKIP=2
+ANTHROPIC_API_KEY=your_anthropic_key

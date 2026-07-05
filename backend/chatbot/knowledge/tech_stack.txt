@@ -1,0 +1,147 @@
+COMPLETE TECH STACK — BiscuitAI
+
+=== AI / MACHINE LEARNING ===
+
+YOLOv8m (You Only Look Once version 8 Medium):
+- Developed by Ultralytics
+- Object detection model — detects AND localizes objects in a single forward pass
+- "m" means medium size: 25.9M parameters, ~52MB model file
+- Chosen over YOLOv8n (nano) and YOLOv8s (small) because broken biscuits have irregular shapes that need deeper feature extraction
+- YOLOv8n: 3.2M params, 37.3% mAP — too weak for irregular broken pieces
+- YOLOv8s: 11.2M params, 44.9% mAP — moderate
+- YOLOv8m: 25.9M params, 50.2% mAP — best for production accuracy
+- Trained for 100 epochs, batch size 16, image size 640x640, AdamW optimizer
+- 3 SEPARATE models trained — one per brand (Monaco, Parle-G, Marie)
+- Why separate? Combined training caused cross-brand label confusion
+- Each model trained on Roboflow-annotated dataset with augmentations
+
+OpenCV (cv2):
+- Open Source Computer Vision Library
+- Used for: reading camera frames via VideoCapture, drawing bounding boxes via rectangle(), writing labels via putText(), encoding frames as JPEG via imencode()
+- Handles all frame-level operations in the detection engine
+- Version used: opencv-python latest
+
+Python Threading:
+- 3 separate threads run simultaneously:
+  1. CamCapture Thread: reads frames from camera at 30fps
+  2. FramePush Thread: encodes frames as JPEG and sends to browser via SocketIO
+  3. Inference Thread: runs YOLOv8 model on every 2nd frame
+- Why threading? So camera display never lags even when inference is slow
+- Uses two separate queues: _raw_q (camera to display) and _infer_q (camera to inference)
+- ThreadPoolExecutor used for parallel model execution
+
+=== BACKEND ===
+
+Python 3.10+:
+- Primary backend language
+- All AI inference, API server, database operations written in Python
+
+Flask:
+- Lightweight Python web framework
+- Serves REST API endpoints for frontend
+- Endpoints: /api/auth, /api/detection, /api/batches, /api/dashboard, /api/export, /api/users
+
+Flask-SocketIO:
+- Real-time WebSocket communication between backend and React frontend
+- Used to stream annotated camera frames to browser in real-time
+- Also emits detection results as they happen
+- async_mode="threading" for Windows compatibility
+
+JWT (JSON Web Tokens):
+- Used for authentication after OTP verification
+- Token stored in browser, sent with every API request
+- Verified by auth_middleware.py on protected routes
+
+=== FRONTEND ===
+
+React.js 18:
+- JavaScript library for building the user interface
+- Component-based architecture
+- Pages: HomePage, FeaturesPage, LoginPage, DetectionPage, DashboardPage, HistoryPage
+
+JavaScript / HTML5 / CSS3:
+- Standard web technologies for structure, styling, interactions
+
+Recharts:
+- React charting library
+- Used for: defect vs good percentage pie charts, time-based trend line charts, hourly production bar charts, 3-brand comparison charts
+
+Socket.IO Client:
+- Browser-side WebSocket client
+- Receives live camera frames and detection results from backend
+
+Axios:
+- HTTP client for making API calls from React to Flask backend
+
+=== DATABASE ===
+
+MySQL 8.0:
+- Relational database for storing all inspection data
+- Tables: users, batches, detections, hourly_stats
+- Batch-wise storage: every detection linked to a batch ID
+- Stored procedures for hourly stats aggregation
+- Used for: detection history, batch management, dashboard analytics
+
+=== AUTHENTICATION ===
+
+SendGrid:
+- Email delivery service
+- Sends 6-digit OTP code to user's email when logging in
+- No passwords stored in database — passwordless authentication
+- Free tier supports up to 100 emails/day
+
+OTP (One-Time Password):
+- 6-digit code sent to registered email
+- Expires after 10 minutes
+- After OTP verified, JWT token issued for session
+
+=== DATASET & TRAINING ===
+
+Roboflow:
+- Platform used for dataset annotation and augmentation
+- Bounding boxes drawn around each biscuit
+- Augmentations applied: horizontal flip, rotation ±5°, HSV shift, mosaic, mixup, copy-paste
+- Exported in YOLOv8 format with data.yaml config
+- 3 datasets: Monaco v10, Parle v5, Marie v5
+
+Dataset Structure per brand:
+- train/images + labels (majority of images)
+- valid/images + labels (validation during training)
+- test/images + labels (final evaluation)
+- Classes: Broken, Burnt, Good
+
+=== CAMERA ===
+
+DroidCam:
+- Android app + Windows/Mac client
+- Connects phone camera to laptop via WiFi
+- Phone camera used instead of laptop webcam for higher resolution
+- Registers as a virtual webcam device on the PC
+- Default port: 4747
+
+=== STABILITY & FALSE POSITIVE PREVENTION ===
+
+Stability Buffer:
+- 3 consecutive frames must all agree on the same detections before logging to database
+- Prevents false positives from hands, faces, or backgrounds being logged
+- Resets if detections change between frames
+
+Heuristic Filters:
+- Confidence threshold: minimum 0.25 (25%)
+- Area fraction: 0.2% to 70% of frame (removes tiny noise and full-frame detections)
+- Aspect ratio: maximum 4.5 (removes thin lines and elongated false detections)
+- NMS (Non-Maximum Suppression): removes overlapping duplicate boxes
+
+=== DEVELOPMENT TOOLS ===
+
+Node.js + npm:
+- Required for React frontend development server
+- npm install installs all frontend dependencies from package.json
+
+Git:
+- Version control
+- Project hosted on GitHub
+
+Python venv:
+- Virtual environment to isolate Python dependencies
+- Activated with venv\Scripts\activate on Windows

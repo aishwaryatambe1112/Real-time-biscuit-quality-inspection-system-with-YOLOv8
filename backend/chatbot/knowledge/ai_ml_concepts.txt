@@ -1,0 +1,124 @@
+AI/ML CONCEPTS USED IN BiscuitAI — FOR INTERVIEWS AND UNDERSTANDING
+
+=== OBJECT DETECTION vs IMAGE CLASSIFICATION ===
+
+Image Classification: tells you WHAT is in the image (e.g., "this is a biscuit")
+Object Detection: tells you WHAT and WHERE — draws bounding boxes (e.g., "Broken biscuit at coordinates x1,y1,x2,y2 with 94% confidence")
+BiscuitAI uses Object Detection (YOLOv8) because we need to locate each biscuit precisely.
+
+=== YOLO ARCHITECTURE ===
+
+YOLO = You Only Look Once
+Traditional detectors used 2 stages: first propose regions, then classify each region
+YOLO does it in 1 pass: divides image into grid, each cell predicts boxes and classes simultaneously
+YOLOv8 improvements: anchor-free detection, better small object recall, C2f backbone, decoupled head
+Output per detection: [x_center, y_center, width, height, confidence, class_probabilities]
+
+=== TRANSFER LEARNING ===
+
+Instead of training from scratch (which needs millions of images), we start with yolov8m.pt which is pretrained on COCO dataset (80 classes, 330K images)
+Fine-tune on our 3-class biscuit dataset
+This is why training works well even with smaller datasets (few hundred images per class)
+
+=== DATA AUGMENTATION ===
+
+Augmentation artificially increases dataset size by creating variations:
+- Horizontal flip: mirror the image
+- Rotation ±5°: slight tilt
+- HSV shift: change hue, saturation, brightness
+- Mosaic: combine 4 images into 1
+- Mixup: blend 2 images
+- Copy-paste: copy objects between images
+Applied automatically by Roboflow before export
+
+=== mAP (MEAN AVERAGE PRECISION) ===
+
+Standard metric for object detection evaluation
+mAP@0.5 means: average precision when IoU threshold = 0.5
+IoU (Intersection over Union) = overlap between predicted box and ground truth box
+Higher mAP = better model
+BiscuitAI models achieve approximately 87-91% mAP@0.5
+
+=== NON-MAXIMUM SUPPRESSION (NMS) ===
+
+When model detects same object multiple times with overlapping boxes
+NMS keeps only the box with highest confidence and removes others with high IoU overlap
+Configured with IOU_THRESHOLD=0.45 in this project
+
+=== CONFIDENCE THRESHOLD ===
+
+Every detection has a confidence score (0 to 1)
+Detections below CONFIDENCE_THRESHOLD=0.25 are rejected
+Lower threshold = more detections but more false positives
+Higher threshold = fewer detections but more precise
+
+=== RAG (RETRIEVAL-AUGMENTED GENERATION) ===
+
+RAG combines a knowledge base with an LLM:
+1. Store project knowledge as text chunks
+2. Convert chunks to vector embeddings (numerical representations)
+3. When user asks a question, convert question to embedding
+4. Find most similar chunks using vector similarity search
+5. Send those chunks + question to LLM as context
+6. LLM answers based on retrieved context, not its training data
+Why RAG? Prevents hallucinations because the LLM only uses facts from our knowledge base
+
+=== VECTOR DATABASE (ChromaDB) ===
+
+Stores text as high-dimensional vectors (embeddings)
+Each vector represents the semantic meaning of a text chunk
+Similarity search finds chunks semantically similar to a query
+ChromaDB is a local, open-source vector database — no cloud needed
+Used in BiscuitAI chatbot to store all project knowledge
+
+=== LLM (LARGE LANGUAGE MODEL) ===
+
+Claude (by Anthropic) is used as the brain of the BiscuitAI chatbot
+Receives: retrieved context chunks + user question
+Generates: natural language answer grounded in retrieved facts
+Claude Haiku model used: fastest, most cost-efficient, great for chatbots
+
+=== PROMPT ENGINEERING ===
+
+The system prompt tells Claude exactly how to behave:
+- Only answer questions about BiscuitAI project
+- Never hallucinate — if answer not in context, say so
+- Be concise and helpful
+- Explain technical concepts clearly
+Good prompts dramatically improve LLM output quality
+
+=== LANGCHAIN ===
+
+Framework that connects LLMs with external tools and data sources
+Used in BiscuitAI chatbot to chain:
+query → embedding → vector search → retrieved chunks → Claude prompt → answer
+LangChain handles the retrieval chain so we don't write boilerplate code
+
+=== FINE-TUNING vs RAG ===
+
+Fine-tuning: retrain model weights on your data (expensive, needs lots of data, slow)
+RAG: keep model weights fixed, just retrieve relevant context at inference time (cheap, fast, easy to update)
+BiscuitAI uses RAG because the knowledge base can be updated without retraining anything
+
+=== WHY 3 SEPARATE MODELS INSTEAD OF 1? ===
+
+Attempted combined training first — resulted in cross-brand confusion:
+Monaco model would fire on Parle-G biscuits and vice versa
+Each brand has unique visual features: Monaco is square/salted, Parle-G is rectangular/glucose, Marie is round/light
+Separate models = each learns brand-specific features independently
+During inference: only the selected brand's model runs — zero cross-contamination
+
+=== THREADING IN PYTHON ===
+
+Python's GIL (Global Interpreter Lock) limits true parallelism for CPU tasks
+However for I/O-bound tasks (camera capture, SocketIO emit, DB writes) threading works well
+YOLOv8 inference releases the GIL during C++ operations so multiple threads can run
+3-thread architecture prevents any single operation from blocking the others:
+- If inference is slow (120ms) the camera display still runs at 30fps
+- If DB write is slow the inference doesn't wait
+
+=== SOCKETIO vs HTTP FOR VIDEO STREAMING ===
+
+HTTP: request-response, client must poll repeatedly for new frames (high latency)
+WebSocket/SocketIO: persistent connection, server pushes frames as soon as available
+Result: smooth real-time video stream at ~25fps with ~40ms latency

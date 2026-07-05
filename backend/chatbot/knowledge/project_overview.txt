@@ -1,0 +1,48 @@
+PROJECT NAME: Real-Time Biscuit Quality Inspection System (BiscuitAI)
+
+WHAT IT IS:
+BiscuitAI is a production-grade AI application that uses deep learning object detection to automatically inspect biscuit quality in real-time from a live camera feed. It replaces slow, unreliable manual inspection on biscuit production lines.
+
+WHAT IT DOES:
+- Detects biscuits in real-time from a webcam or DroidCam phone camera
+- Classifies each biscuit as Good, Broken, or Burnt
+- Supports 3 biscuit brands: Monaco, Parle-G, and Marie
+- Logs every confirmed detection to a MySQL database batch-wise
+- Displays live analytics on a React dashboard
+- Exports history as CSV files
+- Uses OTP-based login via SendGrid email (no passwords stored)
+
+WHY IT WAS BUILT:
+Manual inspection on high-speed biscuit lines misses up to 15% of defects due to human fatigue. A single production line processes 800-1200 biscuits per minute which is impossible to inspect individually by humans. This system provides AI-grade inspection deployable with just a phone camera and a standard PC, making it accessible to both large manufacturers like Parle and small bakeries.
+
+PROJECT TYPE: Final year B.Tech Computer Engineering project
+
+SUPPORTED BISCUIT BRANDS:
+1. Monaco biscuits - square shaped, salted crackers
+2. Parle-G biscuits - rectangular glucose biscuits
+3. Marie biscuits - round, light biscuits
+
+DEFECT CLASSES DETECTED:
+1. Good - biscuit is intact, properly baked, no visible defects
+2. Broken - biscuit has cracks, chips, or broken pieces
+3. Burnt - biscuit is over-baked, darkened, or charred
+
+BATCH WORKFLOW:
+Each inspection session follows this exact sequence:
+1. Start Camera - webcam/DroidCam activates
+2. Select Brand - choose Monaco, Parle-G, or Marie from dropdown
+3. Start Batch - batch record created in MySQL database
+4. Place biscuits - put 2 biscuits in camera view
+5. Live detection happens automatically
+6. Stop Batch - batch finalized, counts saved
+7. Stop Camera - camera released
+Each batch is stored separately in the database with timestamps.
+
+DETECTION CONFIDENCE:
+Every detection shows: Brand name | Classification | Confidence score (e.g., Parle-G | Burnt | 94.2%)
+
+CAMERA SETUP:
+The project uses DroidCam to use an Android phone camera instead of a laptop webcam. Phone cameras provide much higher resolution and image quality which is critical for detecting small defects on biscuits. The phone is mounted on a tripod facing downward. Biscuits are placed on white chart paper below. DroidCam connects phone to laptop via WiFi on the same network.
+
+PHYSICAL SETUP:
+Phone on tripod facing down, white chart paper as background, biscuits placed in rows of 2, good lighting required to avoid shadows.
